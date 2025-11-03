@@ -11,19 +11,18 @@
 # ---------- Paths (override as needed) ----------
 export PYTHONPATH := .
 
-# ---------- Saved NN path ----------
-NN_PATH := $(DATA_DIR)/bin.cgyro.nn
-
 # ---------- Defaults for resume & inference ----------
 RESUME_MORE := 0                  # epochs to train on resume (set >0 for resume)
 INFER_HZ    := 1 5 10             # horizons to use for inference
 TRAIN_HZ    :=                    # optional override for training horizons on resume (leave blank to reuse saved)
 
+DATA_DIR      ?= ./mnt/data
+
+# ---------- Saved NN path ----------
+NN_PATH := $(DATA_DIR)/bin.cgyro.nn
 # Output file for inference predictions
 PRED_NPZ    := $(DATA_DIR)/preds_resume_or_infer.npz
 
-
-DATA_DIR      ?= ./mnt/data
 PHI_BIN       ?= $(DATA_DIR)/bin.cgyro.kxky_phi
 KY_BIN        ?= $(DATA_DIR)/bin.cgyro.ky_flux
 
@@ -161,10 +160,10 @@ tinytest:
 
 # ---------- Deep model knobs ----------
 DEEP_LOG_DIR    ?= $(OUT_ROOT)_logs_deep
-DEEP_TC         ?= 64
+DEEP_TC         ?= 32
 DEEP_HORIZONS   ?= 1 5 10
 DEEP_EPOCHS     ?= 2
-DEEP_BATCH      ?= 8
+DEEP_BATCH      ?= 4
 DEEP_LR         ?= 1e-3
 DEEP_DROPOUT    ?= 0.2
 DEEP_WD         ?= 1e-4
@@ -192,7 +191,7 @@ train_deep: flux
 resume_deep: flux
 	@echo ">> Resume from $(NN_PATH) (more_epochs=$(RESUME_MORE)) and/or infer on horizons: $(INFER_HZ)"
 	mkdir -p $(DEEP_LOG_DIR)_resume
-	PYTHONPATH=. $(PYTHON) resume_or_infer_deep.py \
+	python resume_or_infer_deep.py \
 		--data $(PHI_FLUX_NPZ) \
 		--nn_path $(NN_PATH) \
 		--Tc $(DEEP_TC) \

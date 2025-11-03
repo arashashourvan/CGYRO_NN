@@ -51,6 +51,8 @@ ap.add_argument("--early_stop", type=int, default=10, help="early stopping patie
 ap.add_argument("--weight_decay", type=float, default=1e-4)
 ap.add_argument("--dropout", type=float, default=0.0)
 ap.add_argument("--phys_units", type=int, default=0, help="1=report extra RMSE in physical units if stats available")
+ap.add_argument("--nn_path", default="./mnt/data/bin.cgyro.nn",help="Save/load unified trained NN (weights + cfg + y scalers)")
+
 args = ap.parse_args()
 
 os.makedirs(args.log_dir, exist_ok=True)
@@ -193,11 +195,13 @@ for epoch in range(1, args.epochs + 1):
     val_loss = 0.0
     n_val = 0
     all_true, all_pred = [], []
+    #v_steps = math.ceil(len(val_ds)/args.batch)
     with torch.no_grad():
         for vstep, (xb, yb) in enumerate(DataLoader(val_ds, batch_size=args.batch, shuffle=False)):
             xb = torch.tensor(xb, dtype=torch.float32, device=device)
             yb = torch.tensor(yb, dtype=torch.float32, device=device)
             pred = model(xb)
+            vloss = criterion(pred, yb)  
             val_loss += criterion(pred, yb).item() * len(xb)
             if vstep == 0:
                 print(f"  🔎 val step 0: batch {tuple(xb.shape)} loss={vloss.item():.4f}", flush=True)
@@ -239,9 +243,57 @@ for epoch in range(1, args.epochs + 1):
 
     history.append([epoch, train_loss, val_loss, *rmse_ch])
 
+    # ---- Also save a unified production file for inference/resume ----
+    # If you use DDP, prefer model.module.state_dict()
+    state = model.module.state_dict() if hasattr(model, "module") else model.state_dict()
+
+    # Try to capture y scalers from your training dataset if available
+    def _get_np(a):
+        import numpy as _np
+        if a is None: return None
+        try:
+            return a.detach().cpu().numpy()
+        except Exception:
+            try:
+                return a.cpu().numpy()
+            except Exception:
+                return _np.array(a)
+
+    y_mean = getattr(train_ds, "y_mean", None)
+    y_std  = getattr(train_ds, "y_std", None)
+    y_mean = _get_np(y_mean)
+    y_std  = _get_np(y_std)
+
+    payload = {
+        "state_dict": state,
+        "arch": {
+            "Tc": args.Tc,
+            "base_channels": getattr(args, "base_channels", 32),
+            "depth": getattr(args, "depth", 8),
+            "tcn_channels": getattr(args, "tcn_channels", 128),
+            "tcn_blocks": getattr(args, "tcn_blocks", 3),
+            "dropout": getattr(args, "dropout", 0.0),
+            "norm": getattr(args, "norm", "bn"),
+        },
+        "train_horizons": list(args.horizons),
+        "y_mean": y_mean,
+        "y_std": y_std,
+        "meta": {
+            "epoch": int(epoch),
+            "val_loss": float(val_loss),
+            "log_dir": args.log_dir,
+        },
+    }
+    import os, torch
+    os.makedirs(os.path.dirname(args.nn_path), exist_ok=True)
+    torch.save(payload, args.nn_path)
+    print(f"✅ Saved unified NN → {args.nn_path}")
+
+
     if epochs_no_improve >= args.early_stop:
         print(f"⏹ Early stopping after {epoch} epochs (no val improvement).")
         break
+
 
 # ------------------------
 # Save metrics and plots
@@ -268,6 +320,33 @@ for i,lbl in enumerate(labels):
 plt.xlabel("epoch"); plt.ylabel("RMSE (std units)") ; plt.legend(); plt.tight_layout()
 plt.savefig(os.path.join(args.log_dir, "rmse_bar.png"), dpi=160)
 plt.close()
+
+# Final write of the unified NN (re-uses last/best model on rank 0)
+try:
+    state = model.module.state_dict() if hasattr(model, "module") else model.state_dict()
+    payload = {
+        "state_dict": state,
+        "arch": {
+            "Tc": args.Tc,
+            "base_channels": getattr(args, "base_channels", 32),
+            "depth": getattr(args, "depth", 8),
+            "tcn_channels": getattr(args, "tcn_channels", 128),
+            "tcn_blocks": getattr(args, "tcn_blocks", 3),
+            "dropout": getattr(args, "dropout", 0.0),
+            "norm": getattr(args, "norm", "bn"),
+        },
+        "train_horizons": list(args.horizons),
+        "y_mean": _get_np(getattr(train_ds, "y_mean", None)),
+        "y_std":  _get_np(getattr(train_ds, "y_std", None)),
+        "meta": {"final_write": True, "best_val": float(best_val)},
+    }
+    import os, torch
+    os.makedirs(os.path.dirname(args.nn_path), exist_ok=True)
+    torch.save(payload, args.nn_path)
+    print(f"✅ Final unified NN → {args.nn_path}")
+except Exception as e:
+    print(f"[warn] final save_nn skipped: {e}")
+
 
 # Save summary JSON
 summary = {

@@ -121,11 +121,11 @@ def main():
         dky = float(args.dky)
         ky = args.k0 + np.arange(args.n_n, dtype=np.float32)*dky
 
-        # integrate over ky axis=0 → [n_time]
-        Gamma_i = (Gamma_i_ky * dky).sum(axis=0)
-        Gamma_e = (Gamma_e_ky * dky).sum(axis=0)
-        Qi      = (Qi_ky      * dky).sum(axis=0)
-        Qe      = (Qe_ky      * dky).sum(axis=0)
+        # integrate over ky axis=0 → [n_time] dky-->1 for integration ARASH 
+        Gamma_i = (Gamma_i_ky * 1.0).sum(axis=0)
+        Gamma_e = (Gamma_e_ky * 1.0).sum(axis=0)
+        Qi      = (Qi_ky      * 1.0).sum(axis=0)
+        Qe      = (Qe_ky      * 1.0).sum(axis=0)
         Gamma   = Gamma_i + Gamma_e
 
         print("\nIntegrated over ky (using Δky):")
