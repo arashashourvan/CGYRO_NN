@@ -156,12 +156,12 @@ class Phi2FluxDeep(nn.Module):
 
         # 3D encoder stage
         #if self.training and torch.rand(1).item() < 0.01:  # occasionally
-        print(f"[{os.getpid()}] Encoder output {tuple(enc.shape)}", flush=True)
+        #print(f"[{os.getpid()}] Encoder output {tuple(enc.shape)}", flush=True)
 
         # temporal TCN stage
         out = seq
         #if self.training and torch.rand(1).item() < 0.01:
-        print(f"[{os.getpid()}] TCN output {tuple(out.shape)}", flush=True)
+        # print(f"[{os.getpid()}] TCN output {tuple(out.shape)}", flush=True)
 
         return torch.stack(outs, dim=1)  # [B, H, 3]
 
